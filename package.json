@@ -14,10 +14,10 @@
   },
   "author": "Massachusetts Institute of Technology",
   "license": "BSD-3-Clause",
-  "homepage": "https://github.com/LLK/scratch-svg-renderer#readme",
+  "homepage": "https://github.com/yutucc/demo-scratch-svg-renderer#readme",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/LLK/scratch-svg-renderer.git"
+    "url": "https://github.com/yutucc/demo-scratch-svg-renderer.git"
   },
   "peerDependencies": {
     "scratch-render-fonts": "^1.0.0-prerelease"
