@@ -1,3 +1,10 @@
+/*
+ * @Author: wuqinfa
+ * @Date: 2022-03-17 18:08:44
+ * @LastEditTime: 2022-09-29 10:23:47
+ * @LastEditors: wuqinfa
+ * @Description:
+ */
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const defaultsDeep = require('lodash.defaultsdeep');
 const path = require('path');
@@ -22,7 +29,7 @@ const base = {
             test: /\.js$/,
             loader: 'babel-loader',
             options: {
-                presets: [['env', {targets: {}}]]
+                presets: [['@babel/preset-env', {targets: {browsers: ['last 3 versions', 'Safari >= 8', 'iOS >= 8']}}]]
             }
         }]
     },

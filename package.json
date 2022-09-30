@@ -26,14 +26,15 @@
     "base64-js": "1.2.1",
     "base64-loader": "1.0.0",
     "dompurify": "2.2.7",
+    "js-md5": "0.7.3",
     "minilog": "3.1.0",
     "transformation-matrix": "1.15.0"
   },
   "devDependencies": {
-    "babel-core": "6.26.0",
+    "@babel/core": "7.13.10",
+    "@babel/preset-env": "7.14.8",
     "babel-eslint": "^10.1.0",
-    "babel-loader": "7.1.5",
-    "babel-preset-env": "1.6.1",
+    "babel-loader": "8.2.2",
     "copy-webpack-plugin": "4.6.0",
     "eslint": "7.31.0",
     "eslint-config-scratch": "5.1.0",

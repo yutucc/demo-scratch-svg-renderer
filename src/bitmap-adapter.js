@@ -1,9 +1,20 @@
 const base64js = require('base64-js');
+const md5 = require('js-md5');
 
 /**
  * Adapts Scratch 2.0 bitmaps for use in scratch 3.0
  */
 class BitmapAdapter {
+    static stageNativeSize = [480, 360]; // render 舞台区域的渲染宽高[width, height]
+
+    static setStageNativeSize(stageNativeSize) {
+        if (!Array.isArray(stageNativeSize) || stageNativeSize.length !== 2) {
+            return;
+        }
+
+        BitmapAdapter.stageNativeSize = stageNativeSize;
+    }
+
     /**
      * @param {?function} makeImage HTML image constructor. Tests can provide this.
      * @param {?function} makeCanvas HTML canvas constructor. Tests can provide this.
@@ -148,6 +159,159 @@ class BitmapAdapter {
 
     convertBinaryToDataURI (arrayBuffer, contentType) {
         return `data:${contentType};base64,${base64js.fromByteArray(new Uint8Array(arrayBuffer))}`;
+    }
+
+    /**
+     * 获取背景图根据舞台尺寸等比缩放后的新尺寸
+     * @param {number} oldWidth 背景图原宽
+     * @param {number} oldHeight 背景图原高
+     * @param {number} stageWidth 当前舞台的宽（不传则使用当前类设置的值）
+     * @param {number} stageHeight 当前舞台的高（不传则使用当前类设置的值）
+     * @returns {object} { width, height }
+     */
+    getBackdropResizedWidthHeight (oldWidth, oldHeight, stageWidth, stageHeight) {
+        const STAGE_WIDTH = stageWidth || BitmapAdapter.stageNativeSize[0];
+        const STAGE_HEIGHT = stageHeight || BitmapAdapter.stageNativeSize[1];
+        const STAGE_RATIO = STAGE_WIDTH / STAGE_HEIGHT;
+
+        const imageRatio = oldWidth / oldHeight;
+
+        if (imageRatio >= STAGE_RATIO) {
+            return {
+                width: STAGE_HEIGHT * 2 * imageRatio,
+                height: STAGE_HEIGHT * 2,
+            };
+        }
+
+        return {
+            width: STAGE_WIDTH * 2,
+            height: STAGE_WIDTH * 2 / imageRatio,
+        };
+    }
+
+    /**
+     * 导入背景图时进行的尺寸适配，仿照上面官方的 importBitmap 函数
+     * @param {ArrayBuffer | string} fileData Base 64 encoded image data of the bitmap
+     * @param {string} fileType The MIME type of this file，比如：image/png
+     * @returns {Promise} Resolves to resized image data Uint8Array
+     */
+    importBackdropBitmap (fileData, fileType) {
+        let dataURI = fileData;
+        if (fileData instanceof ArrayBuffer) {
+            dataURI = this.convertBinaryToDataURI(fileData, fileType);
+        }
+        return new Promise((resolve, reject) => {
+            const image = this._makeImage();
+            image.src = dataURI;
+            image.onload = () => {
+                const newSize = this.getBackdropResizedWidthHeight(image.width, image.height);
+                if (newSize.width === image.width && newSize.height === image.height) {
+                    // No change
+                    resolve(this.convertDataURIToBinary(dataURI));
+                } else {
+                    const resizedDataURI = this.resize(image, newSize.width, newSize.height).toDataURL();
+                    resolve(this.convertDataURIToBinary(resizedDataURI));
+                }
+            };
+            image.onerror = () => {
+                reject('Image load failed');
+            };
+        });
+    }
+
+    /**
+     * 切换屏幕尺寸时，使用背景图的原图，进行屏幕尺寸适配后，用于更新当前的背景图
+     * @param {UInt8Array} assetData storage 中生成的 Asset 对象里面的 data 数据（UInt8Array类型的数据）
+     * @param {string} fileType The MIME type of this file，比如：image/png
+     * @returns {Promise} ImageData
+     */
+    changeBackdropBitmap (assetData, fileType) {
+        const dataURI = `data:${fileType};base64,${base64js.fromByteArray(assetData)}`;
+
+        return new Promise((resolve, reject) => {
+            const image = this._makeImage();
+            image.src = dataURI;
+            image.onload = () => {
+                const newSize = this.getBackdropResizedWidthHeight(image.width, image.height);
+                const canvas = this.resize(image, newSize.width, newSize.height);
+                const ctx = canvas.getContext('2d');
+
+                resolve(ctx.getImageData(0, 0, newSize.width, newSize.height));
+            };
+            image.onerror = () => {
+                reject('Image load failed');
+            };
+        });
+    }
+
+    /**
+     * 将 base64 格式的数据转化成 File 对象
+     * @param {string} base64
+     * @param {string} dataFormat 文件格式（如：png）
+     * @returns {File}
+     */
+    dataUrlToFile (base64, dataFormat) {
+        let arr = base64.split(',');
+        let mime = arr[0].match(/:(.*?);/)[1];
+        let str = window.atob(arr[1]);
+        let n = str.length;
+        let u8arr = new Uint8Array(n);
+
+        while (n--) {
+            u8arr[n] = str.charCodeAt(n);
+        }
+
+        const fileName = md5(u8arr); // 跟 scratch-storage 库中生成 Asset 的 assetId 做法一致
+
+        return new File([u8arr], `${fileName}.${dataFormat}`, { type: mime });
+    }
+
+    /**
+     * 将背景图的原图适配多个屏幕尺寸比例
+     * @param {Object}} originAsset 使用 storage 仓库中的 storage.createAsset 函数生成的背景原图资源对象
+     * @param {Array} stageNativeSizes 需要适配的舞台尺寸数组 [{width, height}]
+     * @returns {Array} [File] 返回适配好的图片 File 对象，并且把背景图的原图也放在这个数组里面
+     */
+    adaptiveMoreStageNativeSizeBackdropBitmap (originAsset, stageNativeSizes) {
+        const {
+            data,
+            assetType,
+            dataFormat,
+        } = originAsset;
+        const {
+            contentType,
+        } = assetType;
+        const dataURI = `data:${contentType};base64,${base64js.fromByteArray(data)}`;
+
+        return new Promise((resolve, reject) => {
+            const image = this._makeImage();
+
+            image.src = dataURI;
+            image.onload = () => {
+                const result = [];
+
+                stageNativeSizes.forEach((item) => {
+                    const {
+                        width,
+                        height,
+                    } = item;
+
+                    const newSize = this.getBackdropResizedWidthHeight(image.width, image.height, width, height);
+                    const canvas = this.resize(image, newSize.width, newSize.height);
+                    const img64 = canvas.toDataURL(contentType);
+                    const newImgFile = this.dataUrlToFile(img64, dataFormat);
+
+                    result.push(newImgFile);
+                });
+
+                result.push(new File([data], `${md5(data)}.${dataFormat}`, { type: contentType })); // 这个是原图
+
+                resolve(result);
+            };
+            image.onerror = () => {
+                reject('Image load failed');
+            };
+        });
     }
 }
 
